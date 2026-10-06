@@ -1,0 +1,3 @@
+# College Biometric Attendance System - Dependencies
+reportlab>=4.0.0
+pyinstaller>=6.0.0
