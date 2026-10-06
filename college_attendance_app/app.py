@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from database import (
     init_db, get_connection, get_device_settings, 
     update_device_settings, update_last_sync,
-    verify_admin_login, change_admin_password,
     export_database_backup, restore_database_backup,
     sync_users_from_device, get_all_active_staff_list,
     get_attendance_rules, update_attendance_rules,
@@ -89,20 +88,23 @@ class AttendanceApp(tk.Tk):
         init_db()
         calculate_daily_attendance()
 
-        # Session authentication state
-        self.logged_in_user = None
-        self._clock_started = False
+        # Session user state (direct access, no login required)
+        self.logged_in_user = "niadmin"
+        self._clock_started = True
 
         # Modern TTK styling
         self._setup_ttk_styles()
 
-        # Build Main Application Shell (hidden until authentication)
+        # Build Main Application Shell
         self._build_top_bar()
         self._build_main_layout()
 
-        # Build and present the Login Screen
-        self._build_login_screen()
-        self._show_login_screen()
+        # Start live clock and background hardware probe
+        self._tick_clock()
+        self.after(300, self._check_device_status_async)
+
+        # Show Dashboard directly on launch
+        self.show_view("dashboard")
 
     # =========================================================================
     # THEME & TTK STYLES
@@ -236,10 +238,10 @@ class AttendanceApp(tk.Tk):
         )
         self.clock_lbl.pack(side=tk.LEFT)
 
-        # Current User Badge & Logout
+        # Current User Badge
         self.lbl_user_badge = tk.Label(
             right_box,
-            text="👤 Admin: niadmin",
+            text="👤 Administrator",
             font=('Helvetica', 9, 'bold'),
             fg=COLOR_TEXT_MAIN,
             bg=COLOR_BG,
@@ -248,25 +250,7 @@ class AttendanceApp(tk.Tk):
             highlightthickness=1,
             highlightbackground=COLOR_BORDER
         )
-        self.lbl_user_badge.pack(side=tk.LEFT, padx=(10, 6))
-
-        self.btn_logout = tk.Button(
-            right_box,
-            text="🚪  Logout",
-            font=('Helvetica', 9, 'bold'),
-            bg='#FFFFFF',
-            fg='#000000',
-            activebackground='#F1F5F9',
-            activeforeground='#000000',
-            highlightthickness=1,
-            highlightbackground='#CBD5E1',
-            bd=0,
-            padx=12,
-            pady=7,
-            cursor='hand2',
-            command=self._action_logout
-        )
-        self.btn_logout.pack(side=tk.LEFT)
+        self.lbl_user_badge.pack(side=tk.LEFT)
 
     def _tick_clock(self):
         now_str = datetime.now().strftime("🕒 %I:%M:%S %p")
@@ -402,158 +386,7 @@ class AttendanceApp(tk.Tk):
     def _show_audit_view(self): self.show_view("audit")
     def _show_settings_view(self): self.show_view("settings")
 
-    # =========================================================================
-    # LOGIN SCREEN (Enterprise Authentication Portal)
-    # =========================================================================
-    def _build_login_screen(self):
-        self.login_frame = tk.Frame(self, bg=COLOR_BG)
 
-        # Center wrapper keeps login card centered in window
-        center_wrapper = tk.Frame(self.login_frame, bg=COLOR_BG)
-        center_wrapper.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
-
-        # High-Elevation Modern White Card
-        card = tk.Frame(
-            center_wrapper,
-            bg=COLOR_SURFACE,
-            highlightthickness=1,
-            highlightbackground=COLOR_BORDER,
-            padx=44,
-            pady=38
-        )
-        card.pack()
-
-        # Institution Logo & Title
-        tk.Label(card, text="🏛️", font=('Helvetica', 34), bg=COLOR_SURFACE).pack(pady=(0, 6))
-
-        settings = get_device_settings()
-        college_name = settings.get('college_name', 'NOORUL ISLAM COLLEGE OF ENGINEERING & TECHNOLOGY')
-        tk.Label(
-            card,
-            text=college_name.upper(),
-            font=('Helvetica', 10, 'bold'),
-            fg=COLOR_PRIMARY,
-            bg=COLOR_SURFACE
-        ).pack(pady=(0, 4))
-
-        tk.Label(
-            card,
-            text="Biometric Attendance Portal",
-            font=('Helvetica', 16, 'bold'),
-            fg=COLOR_TEXT_MAIN,
-            bg=COLOR_SURFACE
-        ).pack(pady=(0, 2))
-
-        tk.Label(
-            card,
-            text="Administrator Sign In",
-            font=('Helvetica', 10),
-            fg=COLOR_TEXT_MUTED,
-            bg=COLOR_SURFACE
-        ).pack(pady=(0, 20))
-
-        # Form Inputs
-        form_box = tk.Frame(card, bg=COLOR_SURFACE)
-        form_box.pack(fill=tk.X, pady=(0, 10))
-
-        tk.Label(form_box, text="Username", font=('Helvetica', 9, 'bold'), fg=COLOR_TEXT_SECONDARY, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 4))
-        self.txt_login_user = ttk.Entry(form_box, font=('Helvetica', 10), width=32)
-        self.txt_login_user.insert(0, "niadmin")
-        self.txt_login_user.pack(fill=tk.X, pady=(0, 14))
-
-        tk.Label(form_box, text="Password", font=('Helvetica', 9, 'bold'), fg=COLOR_TEXT_SECONDARY, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 4))
-        self.txt_login_pass = ttk.Entry(form_box, font=('Helvetica', 10), width=32, show="•")
-        self.txt_login_pass.pack(fill=tk.X, pady=(0, 10))
-
-        # Status / Error Feedback Label
-        self.lbl_login_msg = tk.Label(card, text="", font=('Helvetica', 9, 'bold'), fg=COLOR_DANGER, bg=COLOR_SURFACE)
-        self.lbl_login_msg.pack(pady=(0, 10))
-
-        # Sign In Button (Black text on White background with crisp border)
-        self.btn_login = tk.Button(
-            card,
-            text="Sign In to Portal  →",
-            font=('Helvetica', 10, 'bold'),
-            bg='#FFFFFF',
-            fg='#000000',
-            activebackground='#F1F5F9',
-            activeforeground='#000000',
-            highlightthickness=1,
-            highlightbackground='#000000',
-            bd=0,
-            padx=20,
-            pady=10,
-            cursor='hand2',
-            command=self._action_do_login
-        )
-        self.btn_login.pack(fill=tk.X, pady=(0, 16))
-
-        # Default Credentials Hint Box
-        hint_box = tk.Frame(
-            card,
-            bg=COLOR_BG,
-            highlightthickness=1,
-            highlightbackground=COLOR_BORDER,
-            padx=14,
-            pady=9
-        )
-        hint_box.pack(fill=tk.X)
-
-        tk.Label(
-            hint_box,
-            text="Default Login Credentials:\nUsername: niadmin  •  Password: ni2027",
-            font=('Helvetica', 8),
-            fg=COLOR_TEXT_SECONDARY,
-            bg=COLOR_BG,
-            justify=tk.CENTER
-        ).pack()
-
-        # Keyboard shortcuts
-        self.txt_login_user.bind('<Return>', lambda e: self.txt_login_pass.focus_set())
-        self.txt_login_pass.bind('<Return>', lambda e: self._action_do_login())
-
-    def _show_login_screen(self):
-        self.top_bar.pack_forget()
-        self.workspace.pack_forget()
-        self.login_frame.pack(fill=tk.BOTH, expand=True)
-        self.lbl_login_msg.config(text="")
-        self.txt_login_pass.delete(0, tk.END)
-        self.txt_login_pass.focus_set()
-
-    def _action_do_login(self):
-        u = self.txt_login_user.get().strip()
-        p = self.txt_login_pass.get().strip()
-        if not u or not p:
-            self.lbl_login_msg.config(text="Please enter both username and password.", fg=COLOR_DANGER)
-            return
-
-        ok, user_data = verify_admin_login(u, p)
-        if ok:
-            self.logged_in_user = user_data['username']
-            self.lbl_login_msg.config(text="")
-            self.login_frame.pack_forget()
-
-            # Restore and display top bar & workspace
-            self.top_bar.pack(fill=tk.X, side=tk.TOP)
-            self.workspace.pack(fill=tk.BOTH, expand=True)
-            self.lbl_user_badge.config(text=f"👤 Admin: {self.logged_in_user}")
-
-            # Start clock and async hardware probe if not yet started
-            if not getattr(self, '_clock_started', False):
-                self._clock_started = True
-                self._tick_clock()
-                self.after(300, self._check_device_status_async)
-
-            self.show_view("dashboard")
-        else:
-            self.lbl_login_msg.config(text="✕ Invalid username or password. Please try again.", fg=COLOR_DANGER)
-            self.txt_login_pass.delete(0, tk.END)
-            self.txt_login_pass.focus_set()
-
-    def _action_logout(self):
-        if messagebox.askyesno("Confirm Logout", "Are you sure you want to log out of the administration portal?"):
-            self.logged_in_user = None
-            self._show_login_screen()
 
     # =========================================================================
     # PAGE 1: DASHBOARD (Clean Summary Cards & Quick Actions)
@@ -1354,7 +1187,7 @@ class AttendanceApp(tk.Tk):
             guide_banner,
             text="💡 Transferring to a New Computer:\n"
                  "1. Click 'Download Backup File' below and save the .bak file to a USB drive or Google Drive.\n"
-                 "2. Install this application on the new computer and log in.\n"
+                 "2. Open this application on the new computer.\n"
                  "3. Click 'Restore from Backup File' and select the saved .bak file — all staff records and punches transfer instantly!",
             font=('Helvetica', 8),
             fg=COLOR_TEXT_SECONDARY,
@@ -1366,8 +1199,7 @@ class AttendanceApp(tk.Tk):
         bak_btn_row.pack(fill=tk.X, pady=(0, 12))
 
         self._create_primary_btn(bak_btn_row, "💾  Download Backup File", self._action_export_backup, COLOR_PRIMARY).pack(side=tk.LEFT, padx=(0, 10))
-        self._create_primary_btn(bak_btn_row, "📥  Restore from Backup File", self._action_restore_backup, COLOR_SUCCESS).pack(side=tk.LEFT, padx=(0, 10))
-        self._create_outline_btn(bak_btn_row, "🔑  Change Admin Password", self._dialog_change_password).pack(side=tk.LEFT)
+        self._create_primary_btn(bak_btn_row, "📥  Restore from Backup File", self._action_restore_backup, COLOR_SUCCESS).pack(side=tk.LEFT)
 
         # Backup Status Indicator Box
         self.box_backup_status = tk.Frame(backup_card, bg=COLOR_BG, highlightthickness=1, highlightbackground=COLOR_BORDER, padx=16, pady=10)
@@ -1703,66 +1535,7 @@ class AttendanceApp(tk.Tk):
             self._log(f"Restore ERROR: {result}")
             messagebox.showerror("Restore Failed", f"Could not restore database:\n{result}")
 
-    def _dialog_change_password(self):
-        dialog = tk.Toplevel(self)
-        dialog.title("Change Administrator Password")
-        dialog.geometry("450x370")
-        dialog.resizable(False, False)
-        dialog.transient(self)
-        dialog.grab_set()
-        dialog.configure(bg=COLOR_BG)
 
-        # Center on screen
-        x = self.winfo_x() + (self.winfo_width() // 2) - 225
-        y = self.winfo_y() + (self.winfo_height() // 2) - 185
-        dialog.geometry(f"+{max(0, x)}+{max(0, y)}")
-
-        card = tk.Frame(dialog, bg=COLOR_SURFACE, highlightthickness=1, highlightbackground=COLOR_BORDER, padx=24, pady=20)
-        card.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
-
-        tk.Label(card, text="Change Admin Password", font=('Helvetica', 12, 'bold'), fg=COLOR_TEXT_MAIN, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 4))
-        user_name = self.logged_in_user or "niadmin"
-        tk.Label(card, text=f"Update security password for account '{user_name}'.", font=('Helvetica', 8), fg=COLOR_TEXT_MUTED, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 14))
-
-        tk.Label(card, text="Current Password:", font=('Helvetica', 9, 'bold'), fg=COLOR_TEXT_SECONDARY, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 3))
-        e_old = ttk.Entry(card, font=('Helvetica', 10), width=30, show="•")
-        e_old.pack(fill=tk.X, pady=(0, 10))
-
-        tk.Label(card, text="New Password:", font=('Helvetica', 9, 'bold'), fg=COLOR_TEXT_SECONDARY, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 3))
-        e_new = ttk.Entry(card, font=('Helvetica', 10), width=30, show="•")
-        e_new.pack(fill=tk.X, pady=(0, 10))
-
-        tk.Label(card, text="Confirm New Password:", font=('Helvetica', 9, 'bold'), fg=COLOR_TEXT_SECONDARY, bg=COLOR_SURFACE).pack(anchor=tk.W, pady=(0, 3))
-        e_conf = ttk.Entry(card, font=('Helvetica', 10), width=30, show="•")
-        e_conf.pack(fill=tk.X, pady=(0, 16))
-
-        btn_row = tk.Frame(card, bg=COLOR_SURFACE)
-        btn_row.pack(fill=tk.X)
-
-        def do_update():
-            old = e_old.get().strip()
-            new = e_new.get().strip()
-            conf = e_conf.get().strip()
-
-            if not old or not new:
-                messagebox.showerror("Error", "Please fill in all password fields.", parent=dialog)
-                return
-            if new != conf:
-                messagebox.showerror("Error", "New password and confirmation do not match.", parent=dialog)
-                return
-            if len(new) < 4:
-                messagebox.showerror("Error", "New password must be at least 4 characters.", parent=dialog)
-                return
-
-            ok, msg = change_admin_password(user_name, old, new)
-            if ok:
-                dialog.destroy()
-                messagebox.showinfo("Success", "Password updated successfully!")
-            else:
-                messagebox.showerror("Error", msg, parent=dialog)
-
-        self._create_outline_btn(btn_row, "Cancel", dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
-        self._create_primary_btn(btn_row, "Update Password", do_update, COLOR_PRIMARY).pack(side=tk.RIGHT)
 
     def _log(self, message):
         t = datetime.now().strftime("%H:%M:%S")
