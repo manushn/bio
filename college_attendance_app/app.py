@@ -18,7 +18,8 @@ from database import (
     verify_admin_login, change_admin_password,
     export_database_backup, restore_database_backup,
     sync_users_from_device, get_all_active_staff_list,
-    get_attendance_rules, update_attendance_rules
+    get_attendance_rules, update_attendance_rules,
+    check_database_health, DB_FILE
 )
 from device_driver import BiometricDriver
 from attendance_engine import (
@@ -426,7 +427,7 @@ class AttendanceApp(tk.Tk):
         tk.Label(card, text="🏛️", font=('Helvetica', 34), bg=COLOR_SURFACE).pack(pady=(0, 6))
 
         settings = get_device_settings()
-        college_name = settings.get('college_name', 'COLLEGE OF ENGINEERING & TECHNOLOGY')
+        college_name = settings.get('college_name', 'NOORUL ISLAM COLLEGE OF ENGINEERING & TECHNOLOGY')
         tk.Label(
             card,
             text=college_name.upper(),

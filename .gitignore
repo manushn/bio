@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# SQLite databases & journals
+*.db
+*.db-wal
+*.db-shm
+*.bak
+*.pre_restore_bak
+college_attendance_pre_wipe_backup.db
+
+# Build artifacts
+build/
+dist/
+Ready_To_Distribute/
+*.spec.bak
+
+# OS
+.DS_Store
+Thumbs.db
